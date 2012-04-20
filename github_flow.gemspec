@@ -11,10 +11,12 @@ Gem::Specification.new do |gem|
   gem.description   = %q{ need to add description }
   gem.version       = GithubFlow::VERSION::STRING.dup
 
-  gem.files = Dir['Rakefile', '{lib/scripts}/**/*', 'README*', 'LICENSE*']
+  gem.files = Dir['Rakefile', '{lib,scripts}/**/*', 'README*', 'LICENSE*']
   gem.require_paths = %w[ lib ]
 
   gem.add_dependency 'github_api', '~> 0.4'
+  gem.add_dependency 'activerecord', '~> 3.2'
+  gem.add_dependency 'sqlite3', '~> 1.3'
 
   gem.add_development_dependency 'guard', '~> 0.8.8'
   gem.add_development_dependency 'guard-rspec', '0.5.7'

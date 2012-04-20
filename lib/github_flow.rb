@@ -56,6 +56,6 @@ module GithubFlow
   extend AutoloadHelper
 
   autoload_all 'github_flow',
-    :API          => 'api',
+    :Models => 'models',
 
 end # GithubFlow
