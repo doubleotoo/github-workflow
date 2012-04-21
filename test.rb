@@ -39,7 +39,7 @@ end # pull_requests
 #
 #   options::
 #
-#     :repos is an array of GithubRepo objects.
+#     :repos is an array of source GithubRepo objects.
 #
 #   Returns {
 #     Github::Repos => [GithubRepoBranch, ...],
@@ -108,39 +108,6 @@ def get_updated_branches(github = Github.new, user_options = {}, &block)
   updated_repos
 end # get_updated_branches
 
-# get_branch_head
-#
-#   +github+ is a +Github+ object (default='Github.new')
-#
-#   options::
-#
-#     :user is a GitHub username (string)
-#     :repo is a GitHub repository name (string)
-#     :branch is a Git branch name (default='master') (string)
-#
-def get_branch_head(github = Github.new, user_options = {}, &block)
-  options = {
-    :branch => 'master'
-  }.merge(user_options).freeze
-  raise 'Missing required option :user' if not options.has_key?(:user)
-  raise 'Missing required option :repo' if not options.has_key?(:repo)
-  #-----------------------------------------------------------------------------
-  head_sha = nil
-
-  branches = github.repos.branches(options[:user], options[:repo])
-  branches.each do |branch|
-    if branch.name == options[:branch]
-      head_sha = branch.commit.sha
-    end
-  end
-
-  if block_given?
-    yield head_sha
-  end
-
-  head_sha
-end # get_branch_head
-
 # get_commit
 #
 #   +github+ is a +Github+ object (default='Github.new')
@@ -157,7 +124,7 @@ def get_commit(github = Github.new, user_options = {}, &block)
   raise 'Missing required option :repo' if not options.has_key?(:repo)
   raise 'Missing required option :sha' if not options.has_key?(:sha)
   #-----------------------------------------------------------------------------
-  if github.repos.get(options[:user], options[:repo]).nil?
+  if github.repos.get_repo(options[:user], options[:repo]).nil?
     raise "repository #{options[:user]}/#{options[:repo]} does not exist."
   else
     commit = github.repos.commit(options[:user], options[:repo], options[:sha])
@@ -185,23 +152,25 @@ end # get_commit
 #
 #     :target_user is a GitHub username (string)
 #     :target_repo is a GitHub repository name to check commits against.
-#     :source_repos is an array of GithubRepo objects.
+#     :repos is an array of source GithubRepo objects.
 #
 #   Returns {
 #     Github::Repos => [GithubRepoBranch, ...],
 #     ...
 #   }.
 #
+## TODO: LEFT OFF HERE: 4/20/2012
+## TODO: test this.... for some reason get_commit is returning a commit....
 def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}, &block)
   options = {
-    :source_repos => GithubFlow::Models::GithubRepo.all
+    :repos => GithubFlow::Models::GithubRepo.all
   }.merge(user_options).freeze
   raise 'Missing required option :user' if not options.has_key?(:target_user)
   raise 'Missing required option :target_repo' if not options.has_key?(:target_repo)
   #-----------------------------------------------------------------------------
   updated_repo_branches = {} # { repo => [branch, ...] }
 
-  get_updated_branches(github, options[:source_repos]) do |repos|
+  get_updated_branches(github, options) do |repos|
     repos.each do |repo, db_branches|
       db_branches.each do |db_branch|
         if get_commit(@github,
@@ -211,8 +180,10 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
           # new commit not in :target_repo
           updated_repo_branches[repo] ||= []
           updated_repo_branches[repo] << db_branch
+          puts "#{db_branch.sha} does NOT exist in #{options[:target_user]}/#{options[:target_repo]}"
         else
           # old commit already exists in repository
+          puts "#{db_branch.sha} EXISTS in #{options[:target_user]}/#{options[:target_repo]}"
         end
       end
     end
@@ -220,14 +191,6 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
 
   updated_repo_branches
 end # get_updated_branches_relative_to_repo
-
-puts get_branch_head(@github, :user => 'doubleotoo', :repo => 'test-wiki', :branch => 'master')
-puts get_branch_head(@github, :user => 'doubleotoo', :repo => 'test-wiki', :branch => 'tmp-1')
-puts get_branch_head(@github, :user => 'doubleotoo', :repo => 'test-wiki', :branch => 'tmp-2')
-puts get_branch_head(@github, :user => 'doubleotoo', :repo => 'test-wiki', :branch => 'tmp-3')
-get_branch_head(@github, :user => 'doubleotoo', :repo => 'test-wiki', :branch => 'test-branch') do |sha|
-  puts "Block: #{sha}"
-end
 
 puts get_updated_branches_relative_to_repo(@github,
                                       :target_user => 'rose-compiler',
