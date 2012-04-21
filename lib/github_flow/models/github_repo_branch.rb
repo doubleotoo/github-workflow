@@ -9,7 +9,7 @@ module GithubFlow
 
       # Does not work... #{self.github_repo}
       def to_s
-        "<GithubRepoBranch:#{self.github_repo.repo_path}:#{self.name}:#{self.sha}>"
+        "<GithubRepoBranch:#{self.github_repo.path}:#{self.name}:#{self.sha}>"
       end
     end # GithubRepoBranch
   end # Models

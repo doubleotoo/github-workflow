@@ -17,28 +17,28 @@ module GithubFlow
             :database => @database
         )
 
-        ActiveRecord::Schema.define do
-            create_table :github_repo, :force => @force do |table|
-                table.column :user,
-                  :string,
-                  :presence => true
-                table.column :repo,
-                  :string,
-                  :presence => true,
-            end # github_repos
+        # ActiveRecord::Schema.define do
+        #     create_table :github_repo, :force => @force do |table|
+        #         table.column :user,
+        #           :string,
+        #           :presence => true
+        #         table.column :name,
+        #           :string,
+        #           :presence => true,
+        #     end # github_repos
 
-            create_table :github_repo_branch, :force => @force do |table|
-                table.column :github_repo_id,
-                  :integer,
-                  :presence => true
-                table.column :name,
-                  :string,
-                  :presence => true
-                table.column :sha,
-                  :string,
-                  :presence => true
-            end # github_repo_branches
-        end
+        #     create_table :github_repo_branch, :force => @force do |table|
+        #         table.column :github_repo_id,
+        #           :integer,
+        #           :presence => true
+        #         table.column :name,
+        #           :string,
+        #           :presence => true
+        #         table.column :sha,
+        #           :string,
+        #           :presence => true
+        #     end # github_repo_branches
+        # end
       end
     end # Schema
   end # Models

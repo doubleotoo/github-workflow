@@ -7,12 +7,12 @@ module GithubFlow
 
       has_many :branches, :class_name => 'GithubRepoBranch'
 
-      def repo_path
-        "#{self.user}/#{self.repo}"
+      def path
+        "#{self.user}/#{self.name}"
       end
 
       def to_s
-        "<GithubRepo:#{repo_path}:{#{branches}}>"
+        "<GithubRepo:#{path}:{#{branches}}>"
       end
     end # GithubRepo
   end # Models
