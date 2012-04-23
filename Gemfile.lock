@@ -79,5 +79,6 @@ DEPENDENCIES
   guard (~> 0.8.8)
   guard-cucumber (= 0.7.4)
   guard-rspec (= 0.5.7)
+  rack (~> 1.4)
   rake
   rb-fsevent

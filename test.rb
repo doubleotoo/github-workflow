@@ -3,12 +3,15 @@
 require 'github_flow'
 require 'github_api'
 
+require 'grit'
+require 'tmpdir'
+
 #GithubFlow::Models::Schema.new(adapter='sqlite3', database='tmp-demo.sqlite3', force=true)
 #GithubFlow::Models::Schema.new
 #GithubFlow::Models::Schema.new(adapter='sqlite3', database=':memory:', force=true, logger=nil)
 GithubFlow::Models::Schema.new(adapter='sqlite3', database='tmp.sqlite3', force=true, logger=nil)
 
-#repo = GithubFlow::Models::GithubRepo.create(:name => 'test-wiki', :user => 'doubleotoo')
+# repo = GithubFlow::Models::GithubRepo.create(:name => 'foo', :user => 'rose-compiler')
 #if repo.valid?
 #  puts 'Valid!'
 #else
@@ -22,7 +25,7 @@ def pull_requests
         puts "Page #{page_no}"
         page.each do |pull_request|
           puts "#{pull_request.number} #{pull_request.state} #{pull_request.title}: #{pull_request.updated_at}"
-          puts @github.pull_requests.comments 'doubleotoo', 'test-wiki', pull_request.number
+          puts @github.pull_requests.comments 'doubleotoo', 'foo', pull_request.number
         end # page.each
       page_no += 1
     end # pull_requests.each_page
@@ -64,7 +67,7 @@ def get_updated_branches(github = Github.new, user_options = {}, &block)
 
           #---------------------------------------------------------------------
           # Updated branch
-          if db_branch.sha  != remote_branch.commit.sha
+          if db_branch.sha != remote_branch.commit.sha
             #puts "Branch updating: #{db_branch}"
 
             db_branch.sha = remote_branch.commit.sha
@@ -127,11 +130,37 @@ def get_commit(github = Github.new, user_options = {}, &block)
   if github.repos.get_repo(options[:user], options[:repo]).nil?
     raise "repository #{options[:user]}/#{options[:repo]} does not exist."
   else
-    commit = github.repos.commit(options[:user], options[:repo], options[:sha])
+    commit = nil
+
+    puts "Searching #{options[:user]}/#{options[:repo]} for #{options[:sha]}"
+
+    # TODO: GitHub APIv3 bug? returns commit if it exists in a forked repo...
+    # TODO: sent email to github support
+    #commit = github.repos.commit(options[:user], options[:repo], options[:sha])
+
+    # TODO: cloning the entire repository each time is slow...
+    Dir.mktmpdir do |tmp_git_path|
+      git = Grit::Git.new(tmp_git_path)
+      git.clone({
+            :quiet    => false,
+            :verbose  => true,
+            :progress => true,
+            :branch   => 'master'
+          },
+          "http://github.com/#{options[:user]}/#{options[:repo]}.git",
+          tmp_git_path)
+
+      grit = Grit::Repo.new(tmp_git_path)
+      if grit.git.branch( {:contains => options[:sha]} ).empty?
+        commit = nil
+      else
+        commit = github.repos.commit(options[:user], options[:repo], options[:sha])
+      end
+    end
+
     if block_given?
       yield commit
     end
-
     return commit
   end
 end # get_commit
@@ -139,12 +168,10 @@ end # get_commit
 #-------------------------------------------------------------------------------
 # Main
 
-@github = Github.new
-
 # get_updated_branches_relative_to_repo
 #
-#   Polls GitHub repositories for new/updated branches (these are persisted)
-#   that have commits .
+#   Polls GitHub repositories for new/updated branches that have new commits.
+#   (Branches are persisted.)
 #
 #   +github+ is a +Github+ object (default='Github.new')
 #
@@ -159,8 +186,6 @@ end # get_commit
 #     ...
 #   }.
 #
-## TODO: LEFT OFF HERE: 4/20/2012
-## TODO: test this.... for some reason get_commit is returning a commit....
 def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}, &block)
   options = {
     :repos => GithubFlow::Models::GithubRepo.all
@@ -173,7 +198,7 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
   get_updated_branches(github, options) do |repos|
     repos.each do |repo, db_branches|
       db_branches.each do |db_branch|
-        if get_commit(@github,
+        if get_commit(github,
                       :user => options[:target_user],
                       :repo => options[:target_repo],
                       :sha => db_branch.sha).nil?
@@ -192,9 +217,10 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
   updated_repo_branches
 end # get_updated_branches_relative_to_repo
 
+@github = Github.new
 puts get_updated_branches_relative_to_repo(@github,
-                                      :target_user => 'rose-compiler',
-                                      :target_repo => 'test-wiki')
+                                      :target_user => 'doubleotoo',
+                                      :target_repo => 'foo')
 
 
 # puts

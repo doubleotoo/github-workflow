@@ -17,10 +17,12 @@ Gem::Specification.new do |gem|
   gem.add_dependency 'github_api', '~> 0.4'
   gem.add_dependency 'activerecord', '~> 3.2'
   gem.add_dependency 'sqlite3', '~> 1.3'
+  gem.add_dependency 'grit', '~> 2.5'
 
   gem.add_development_dependency 'guard', '~> 0.8.8'
   gem.add_development_dependency 'guard-rspec', '0.5.7'
   gem.add_development_dependency 'guard-cucumber', '0.7.4'
+  gem.add_development_dependency 'rack', '~> 1.4'
   gem.add_development_dependency 'rake'
   gem.add_development_dependency 'bundler'
 end
