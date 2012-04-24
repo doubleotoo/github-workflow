@@ -180,9 +180,6 @@ def get_commit(github = Github.new, user_options = {}, &block)
   end
 end # get_commit
 
-#-------------------------------------------------------------------------------
-# Main
-
 # get_updated_branches_relative_to_repo
 #
 #   Polls GitHub repositories for new/updated branches that have new commits.
@@ -295,22 +292,22 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
   end # updated_repo_branches.each
 end # create_pull_requests_for_updated_branches
 
-GithubFlow.debug = true
+#-------------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------------
 
 begin
+  GithubFlow.debug = true
+
   @github = Github.new(:basic_auth => 'doubleotoo:x')
 
-  create_pull_requests_for_updated_branches(@github,
-                                            :base_user => 'doubleotoo',
-                                            :base_repo => 'foo',
-                                            :base_branch => 'master')
+  create_pull_requests_for_updated_branches(
+      @github,
+      :base_user => 'doubleotoo',
+      :base_repo => 'foo',
+      :base_branch => 'master')
+
 rescue Github::Error::GithubError
   puts "Github API error response message:\n#{$!.response_message}"
 end
-
-
-# puts
-# puts '-' * 80
-# puts GithubFlow::Models::GithubRepo.all
-# puts GithubFlow::Models::GithubRepoBranch.all
 
