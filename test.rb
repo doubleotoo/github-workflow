@@ -11,12 +11,14 @@ require 'tmpdir'
 #GithubFlow::Models::Schema.new(adapter='sqlite3', database=':memory:', force=true, logger=nil)
 GithubFlow::Models::Schema.new(adapter='sqlite3', database='tmp.sqlite3', force=true, logger=nil)
 
-# repo = GithubFlow::Models::GithubRepo.create(:name => 'foo', :user => 'rose-compiler')
+#repo = GithubFlow::Models::GithubRepo.create(:name => 'foo', :user => 'rose-compiler')
 #if repo.valid?
 #  puts 'Valid!'
 #else
 #  raise "Error: #{repo.errors.full_messages}"
 #end
+#
+#
 
 def pull_requests
   GithubFlow::Models::GithubRepo.all.each do |repo|
@@ -42,10 +44,10 @@ end # pull_requests
 #
 #   options::
 #
-#     :repos is an array of source GithubRepo objects.
+#     :repos is an array of source GithubFlow::Models::GithubRepo objects.
 #
 #   Returns {
-#     Github::Repos => [GithubRepoBranch, ...],
+#     Github::Repos => [ {:new => GithubRepoBranch, :old_sha => SHA1-string, ...],
 #     ...
 #   }.
 #
@@ -70,16 +72,22 @@ def get_updated_branches(github = Github.new, user_options = {}, &block)
           if db_branch.sha != remote_branch.commit.sha
             #puts "Branch updating: #{db_branch}"
 
+            old_sha = db_branch.sha
             db_branch.sha = remote_branch.commit.sha
             db_branch.save
 
             if db_branch.valid?
               #puts "Branch updated: #{db_branch}"
               updated_repos[repo] ||= []
-              updated_repos[repo] << db_branch
+              updated_repos[repo] << {
+                :new => db_branch,
+                :old_sha => old_sha
+              }
             else
               raise "Error: #{db_branch.errors.full_messages}"
             end
+          else
+            #puts "Branch is up-to-date: #{db_branch}!"
           end
 
         rescue ActiveRecord::RecordNotFound
@@ -94,7 +102,10 @@ def get_updated_branches(github = Github.new, user_options = {}, &block)
           if db_branch.valid?
             #puts "Branch is NEW: #{db_branch}"
             updated_repos[repo] ||= []
-            updated_repos[repo] << db_branch
+              updated_repos[repo] << {
+                :new => db_branch,
+                :old_sha => nil
+              }
           else
             raise "Error: #{db_branch.errors.full_messages}"
           end
@@ -177,8 +188,8 @@ end # get_commit
 #
 #   options::
 #
-#     :target_user is a GitHub username (string)
-#     :target_repo is a GitHub repository name to check commits against.
+#     :base_user is a GitHub username (string)
+#     :base_repo is a GitHub repository name to check commits against.
 #     :repos is an array of source GithubRepo objects.
 #
 #   Returns {
@@ -190,37 +201,165 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
   options = {
     :repos => GithubFlow::Models::GithubRepo.all
   }.merge(user_options).freeze
-  raise 'Missing required option :user' if not options.has_key?(:target_user)
-  raise 'Missing required option :target_repo' if not options.has_key?(:target_repo)
+  raise 'Missing required option :base_user' if not options.has_key?(:base_user)
+  raise 'Missing required option :base_repo' if not options.has_key?(:base_repo)
   #-----------------------------------------------------------------------------
-  updated_repo_branches = {} # { repo => [branch, ...] }
+  updated_branches = {} # { repo => [branch, ...] }
 
-  get_updated_branches(github, options) do |repos|
-    repos.each do |repo, db_branches|
-      db_branches.each do |db_branch|
+  get_updated_branches(github, options) do |updated_repos|
+    updated_repos.each do |updated_repo, updated_db_branches|
+      updated_db_branches.each do |updated_db_branch_hash|
+        updated_db_branch = updated_db_branch_hash[:new]
+        old_sha = updated_db_branch_hash[:old_sha]
         if get_commit(github,
-                      :user => options[:target_user],
-                      :repo => options[:target_repo],
-                      :sha => db_branch.sha).nil?
-          # new commit not in :target_repo
-          updated_repo_branches[repo] ||= []
-          updated_repo_branches[repo] << db_branch
-          puts "#{db_branch.sha} does NOT exist in #{options[:target_user]}/#{options[:target_repo]}"
+                      :user => options[:base_user],
+                      :repo => options[:base_repo],
+                      :sha => updated_db_branch.sha).nil?
+          # new commit not in :base_repo
+          updated_branches[updated_repo] ||= []
+          updated_branches[updated_repo] << updated_db_branch_hash
+          GithubFlow.log "#{updated_db_branch.sha} does NOT exist in #{options[:base_user]}/#{options[:base_repo]}"
         else
           # old commit already exists in repository
-          puts "#{db_branch.sha} EXISTS in #{options[:target_user]}/#{options[:target_repo]}"
+          GithubFlow.log"#{updated_db_branch.sha} EXISTS in #{options[:base_user]}/#{options[:base_repo]}"
         end
       end
     end
   end
 
-  updated_repo_branches
+  if block_given?
+    yield updated_branches
+  end
+  updated_branches
 end # get_updated_branches_relative_to_repo
 
-@github = Github.new
-puts get_updated_branches_relative_to_repo(@github,
-                                      :target_user => 'doubleotoo',
-                                      :target_repo => 'foo')
+# TODO: add labels 'pull-request', 'test-request'
+def create_pull_requests_for_updated_branches(github = Github.new, user_options ={}, &block)
+  options = {
+    :repos => GithubFlow::Models::GithubRepo.all,
+    :base_branch => 'master'
+  }.merge(user_options).freeze
+  raise 'Missing required option :base_user' if not options.has_key?(:base_user)
+  raise 'Missing required option :base_repo' if not options.has_key?(:base_repo)
+  #-----------------------------------------------------------------------------
+
+  updated_repo_branches = get_updated_branches_relative_to_repo(github,
+                                      :base_user => options[:base_user],
+                                      :base_repo => options[:base_repo])
+  updated_repo_branches.each do |updated_repo, updated_branches|
+    updated_branches.each do |updated_branch_hash|
+      updated_branch = updated_branch_hash[:new]
+      old_sha = updated_branch_hash[:old_sha]
+
+      # TODO: add ass method option
+      next if not updated_branch.name.match(/-rc$/)
+
+      db_pull_request = updated_repo.pull_requests.find(:first, :conditions => {
+          :base_github_repo_path => "#{options[:base_user]}/#{options[:base_repo]}",
+          :base_sha => options[:base_branch],
+          :head_sha => old_sha})
+
+      # If the tests have already started, we can't add new commits => create a new request.
+      #
+      # However, if the tests have NOT started, a user may add additional
+      # commits to an existing pull_request by pushing to a specific branch.
+      #
+      # Therefore, before testing a pull_request, we need to poll one more time, to check
+      # what the latest commits are, if the pull_request is still open, etc.
+      #
+      # Need to lock the database to avoid race conditions!
+
+      if db_pull_request.nil? # TODO: or db_pull_request.testing?
+        GithubFlow.log 'Creating pull request:' +
+            "\n\tfrom: #{updated_repo.path}:#{updated_branch.name} (#{updated_branch.sha})" +
+            "\n\tinto: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}"
+
+        begin
+          # TODO: head: use branch? or sha?
+          # TODO: creates new pull requests for the same [repo/branch], but different commits.
+          #       Should we update requests instead?
+          #         1. Is a pull request already being tested? => don't add new commits (if @is_testing)
+          #         2. Is a pull request waiting in the testing queue? => add new commits
+          response = github.pull_requests.create_request(options[:base_user],
+                                              options[:base_repo],
+                                              'title' => "Merge #{updated_repo.user}:#{updated_branch.sha[0,8]}",
+                                              'body'  => 'Automatically generated pull-request.',
+                                              'head'  => "#{updated_repo.user}:#{updated_branch.sha}",
+                                              'base'  => "#{options[:base_branch]}")
+          updated_repo.pull_requests.create!(
+            :issue_number => response.number,
+            :base_github_repo_path => "#{options[:base_user]}/#{options[:base_repo]}",
+            :base_sha => options[:base_branch],
+            :head_sha => updated_branch.sha)
+        rescue Github::Error::UnprocessableEntity
+          # TODO: existing pull request
+          # TODO: ...check if it's being tested already. If so, create a new request.
+          # TODO: should have been caught above
+          # e = GithubFlow::Error::PullRequestExistsError.new($!.response_message)
+          # if e.matches?
+          #   raise e
+          # else
+          #   raise "Unknown Github::Error: #{$!}"
+          # end
+          GithubFlow.log "Github Error"
+        end
+      else
+        puts "Updating pull request ##{db_pull_request}:"
+        puts "  from: #{updated_repo.path}:#{updated_branch.name} (#{updated_branch.sha})"
+        puts "  into: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}"
+        puts
+        puts "Adding new commits up to #{updated_branch.sha}"
+
+        # TODO: add Issue comment to say we've added a new commit?
+
+        # TODO: update title to reflect latest Git SHA
+        #
+        # TODO: cloning the entire repository each time is slow...
+        Dir.mktmpdir do |tmp_git_path|
+          git = Grit::Git.new(tmp_git_path)
+          git.clone({
+                :quiet    => false,
+                :verbose  => true,
+                :progress => true,
+                :branch   => updated_branch.sha
+              },
+              "https://#{updated_repo.user}@github.com/#{updated_repo.path}.git",
+              tmp_git_path)
+
+          grit = Grit::Repo.new(tmp_git_path)
+
+          # Push new commits
+          grit.git.push({
+              :raise => true,
+              :timeout => 45
+            },
+            'origin',
+            "#{updated_branch.sha}:refs/heads/#{db_pull_request.head_sha}")
+        end # Dir.mktmpdir (git-clone)
+
+        github.pull_requests.update_request(options[:base_user],
+                                            options[:base_repo],
+                                            db_pull_request.issue_number,
+                                            'title' => "Merge #{updated_repo.user}:#{updated_branch.sha[0,8]}")
+        db_pull_request.head_sha = updated_branch.sha
+        db_pull_request.save!
+      end
+    end
+  end
+end
+
+GithubFlow.debug = true
+
+begin
+  @github = Github.new(:basic_auth => 'doubleotoo:PASS')
+
+  create_pull_requests_for_updated_branches(@github,
+                                            :base_user => 'doubleotoo',
+                                            :base_repo => 'foo',
+                                            :base_branch => 'master')
+rescue Github::Error::GithubError
+  puts "Github API error response message:\n#{$!.response_message}"
+end
 
 
 # puts

@@ -1,5 +1,7 @@
 # encoding: utf-8
 
+require 'logger'
+
 require 'github_flow/version'
 require 'github_flow/configuration'
 require 'github_flow/constants'
@@ -9,15 +11,15 @@ module GithubFlow
   extend Configuration
 
   class << self
-
     # Handle for the client instance
     attr_accessor :api_client
 
-    # Alias for Github::Client.new
+    # TODO:
+    # Alias for GithubFlow::Client.new
     #
-    # @return [Github::Client]
+    # @return [GithubFlow::Client]
     def new(options = {}, &block)
-      @api_client = Github::Client.new(options, &block)
+      #@api_client = Github::Client.new(options, &block)
     end
 
     # Delegate to Github::Client
@@ -30,9 +32,28 @@ module GithubFlow
     def respond_to?(method, include_private = false)
       new.respond_to?(method, include_private) || super(method, include_private)
     end
-
   end
 
+  #-----------------------------------------------------------------------------
+  # Logging (stolen from Grit)
+  #-----------------------------------------------------------------------------
+  class << self
+    # Set +debug+ to true to log all git calls and responses
+    attr_accessor :debug
+
+    # The standard +logger+ for debugging - this defaults to a plain STDOUT logger
+    attr_accessor :logger
+    def log(str)
+      logger.debug { str }
+    end
+  end
+  self.debug = false
+
+  @logger ||= ::Logger.new(STDOUT)
+
+  #-----------------------------------------------------------------------------
+  # Autoload
+  #-----------------------------------------------------------------------------
   module AutoloadHelper
 
     def autoload_all(prefix, options)
@@ -57,5 +78,6 @@ module GithubFlow
 
   autoload_all 'github_flow',
     :Models => 'models',
+    :Error  => 'error',
 
 end # GithubFlow

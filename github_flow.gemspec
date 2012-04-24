@@ -18,6 +18,7 @@ Gem::Specification.new do |gem|
   gem.add_dependency 'activerecord', '~> 3.2'
   gem.add_dependency 'sqlite3', '~> 1.3'
   gem.add_dependency 'grit', '~> 2.5'
+  gem.add_dependency 'json', '~> 1.6'
 
   gem.add_development_dependency 'guard', '~> 0.8.8'
   gem.add_development_dependency 'guard-rspec', '0.5.7'
