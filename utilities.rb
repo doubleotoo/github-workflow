@@ -137,22 +137,29 @@ end
 # Get a list of code reviewers for a collection of commits,
 # from the meta data in the HEAD of the repository.
 #
-def get_reviewers(grit, authors_file, commits)
+# Returns a Hash:
+#
+#   {
+#     :file => [reviewer1, reviewer2, ..],
+#     ...
+#   }
+#
+def get_reviewers_by_file(grit, authors_file, commits)
   files       = get_modified_files(commits)
   head_commit = grit.commits.first
 
-  reviewers = files.collect do |file|
+  reviewers = {}
+  files.each do |file|
     file_reviewers = get_reviewers_for_file(head_commit, authors_file, file)
     if file_reviewers.nil? or file_reviewers.empty?
       raise "file_reviewers=#{file_reviewers} (nil/empty) for file=#{file}"
     else
       GithubFlow.log "Code reviewers for #{head_commit.id_abbrev}:#{file}: #{file_reviewers}"
-      file_reviewers
+      reviewers[file] = file_reviewers
     end
-  end.flatten.compact.uniq
+  end
 
-  GithubFlow.log "Code reviewers for commit=#{head_commit.id_abbrev}: #{reviewers}"
-
+  GithubFlow.log "Code reviewers (by file) for commit=#{head_commit.id_abbrev}: #{reviewers}"
   reviewers
 end # get_reviewers
 

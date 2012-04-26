@@ -264,7 +264,7 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
         "[into: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}]"
 
       # TODO: between [rose-compiler:rose, user:branch]
-      reviewers = []
+      file_reviewers = {}
       Dir.mktmpdir do |tmp_git_path|
         git = Grit::Git.new(tmp_git_path)
         git.clone({
@@ -284,27 +284,49 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
         GithubFlow.log "New commits: #{new_commits.size} #{new_commits}"
         GithubFlow.log "Ignored commits: #{ignored_commits.size} #{ignored_commits}"
 
-        reviewers = get_reviewers(grit, 'AUTHORS.yml', review_commits)
-        validate_reviewers(github, reviewers)
-      end
+        file_reviewers = get_reviewers_by_file(grit, 'AUTHORS.yml', review_commits)
 
-      reviewers = reviewers.collect {|reviewer| reviewer['github-user']}
+        # Only need to validate each unique user once.
+        reviewers = []
+        file_reviewers.each do |f, r|
+          reviewers << r
+        end
+        reviewers = reviewers.flatten.compact.uniq
+
+        validate_reviewers(github, reviewers)
+      end # Dir.mktmpdir
 
       # Don't allow self-reviews. Someone else has to review your work!
-      reviewers.delete(updated_repo.user)
+      file_reviewers = file_reviewers.each do |file, reviewers|
+        reviewers = reviewers.collect do |reviewer|
+          if reviewer['github-user'] == updated_repo.user
+            nil
+          else
+            reviewer
+          end
+        end.compact
+        file_reviewers[file] = reviewers
+      end
 
-      GithubFlow.log "Reviewers for new pull request: #{reviewers}"
+      GithubFlow.log "Reviewers for new pull request: #{file_reviewers}"
+
+      #---------------------------------
+      # Pull request description body
+      #---------------------------------
+      body = "Automatically generated pull-request.\n"
+      file_reviewers.each {|file, reviewers|
+        body << reviewers.collect {|r| "\n@#{r['github-user']} "}.join + ": please code review #{file}."
+      }
 
       begin
         response = github.pull_requests.create_request(
             options[:base_user],
             options[:base_repo],
             'title' => "Merge #{updated_repo.user}:#{updated_branch.name} (#{updated_branch.sha[0,8]})",
-            'body'  => "Automatically generated pull-request.\n\n" +
-                       reviewers.collect {|r| "@#{r} "}.join + ': please code review.',
+            'body'  => body,
             'head'  => "#{updated_repo.user}:#{updated_branch.sha}",
             'base'  => "#{options[:base_branch]}")
-        GithubFlow.log 'Created GitHub::PullRequest'
+        GithubFlow.log "Created GitHub::PullRequest: #{response.to_json}"
 
         updated_repo.pull_requests.create!(
           :issue_number => response.number,
