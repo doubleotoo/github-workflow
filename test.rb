@@ -259,9 +259,9 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
       # TODO: add ass method option
       next if not updated_branch.name.match(/-rc$/)
 
-      GithubFlow.log 'Creating pull request:' +
-        "\n\tfrom: #{updated_repo.path}:#{updated_branch.name} (#{updated_branch.sha})" +
-        "\n\tinto: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}"
+      GithubFlow.log 'Creating pull request: ' +
+        "[from: #{updated_repo.path}:#{updated_branch.name} (#{updated_branch.sha})] " +
+        "[into: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}]"
 
       # TODO: between [rose-compiler:rose, user:branch]
       reviewers = []

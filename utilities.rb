@@ -78,7 +78,12 @@ end
 # TODO: return hash { :path_string => '', :grit_tree => '' }
 # TODO: raise error if not found (instead of returning nil)?
 #
-# Returns a +Grit::Tree+ object.
+# Returns a hash:
+#
+#   {
+#     :dirname => "relative/path/to/dir",
+#     :tree => :+Grit::Tree+
+#   }
 #
 def get_closest_file(commit, filename, path)
   dirs = File.dirname(path).split(File::SEPARATOR)
@@ -92,11 +97,12 @@ def get_closest_file(commit, filename, path)
     if tree.nil? # path/to/filename does not exist
       dirs.pop
     else
-      return tree
+      return { :dirname => currentpath, :tree => tree }
     end
   end
 
-  commit.tree / filename # could be nil if no ROOT/filename
+  # Tree could be nil if no ROOT/filename exists.
+  { :dirname => '', :tree => commit.tree / filename }
 end # get_closest_file
 
 # get_reviewers_for_file
@@ -107,15 +113,17 @@ def get_reviewers_for_file(commit, authors_file, file)
 
   GithubFlow.log "Locating closest file=#{authors_file} for #{commit.id_abbrev}:#{file}"
   grit_authors_file = get_closest_file(commit, authors_file, file)
+  dirname = grit_authors_file[:dirname]
+  tree = grit_authors_file[:tree]
 
   # Parse +authors_file+ (YAML) for +file+ code reviewers.
-  if grit_authors_file.nil?
+  if tree.nil?
     raise "The closest authors_file=#{authors_file} to file=#{file} is nil!"
   else
-    GithubFlow.log "Located file=#{grit_authors_file.name} as the closest " +
+    GithubFlow.log "Located file=#{File.join(dirname, authors_file)} as the closest " +
                    "file=#{authors_file} for #{commit.id_abbrev}:#{file}"
 
-    yaml = YAML.load(grit_authors_file.data)
+    yaml = YAML.load(tree.data)
     reviewers = yaml['code-reviewers']
   end
 end
