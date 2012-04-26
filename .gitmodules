@@ -1,3 +1,6 @@
 [submodule "gems/git-pulls"]
 	path = gems/git-pulls
 	url = git@github.com:doubleotoo/git-pulls.git
+[submodule "gems/github"]
+	path = gems/github
+	url = https://doubleotoo@github.com/doubleotoo/github.git
