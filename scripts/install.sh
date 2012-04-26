@@ -5,7 +5,7 @@ gem install ./github_flow-0.0.0.gem
 
 pushd gems/github
 gem build ./github_api.gemspec
-gem install ./github-0.4.11.gem
+gem install ./github_api-0.4.11.gem
 popd
 
 # pushd gems/git-pulls

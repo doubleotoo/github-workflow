@@ -313,23 +313,23 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
       #---------------------------------
       # Pull request description body
       #---------------------------------
-      body = "Automatically generated pull-request.\n"
+      body = "(Automatically generated pull-request.)\n"
       file_reviewers.each {|file, reviewers|
         body << reviewers.collect {|r| "\n@#{r['github-user']} "}.join + ": please code review #{file}."
       }
 
       begin
-        response = github.pull_requests.create_request(
+        pull_request = github.pull_requests.create_request(
             options[:base_user],
             options[:base_repo],
             'title' => "Merge #{updated_repo.user}:#{updated_branch.name} (#{updated_branch.sha[0,8]})",
             'body'  => body,
             'head'  => "#{updated_repo.user}:#{updated_branch.sha}",
             'base'  => "#{options[:base_branch]}")
-        GithubFlow.log "Created GitHub::PullRequest: #{response.to_json}"
+        GithubFlow.log "Created GitHub::PullRequest: #{pull_request.to_json}"
 
         updated_repo.pull_requests.create!(
-          :issue_number => response.number,
+          :issue_number => pull_request.number,
           :base_github_repo_path => "#{options[:base_user]}/#{options[:base_repo]}",
           :base_sha => options[:base_branch],
           :head_sha => updated_branch.sha)
@@ -347,6 +347,70 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
         GithubFlow.log "Github Error"
       end # begin..rescue
 
+      #-------------------------------------------------------------------------
+      # Update pull request
+      #
+      # (This extra step is simply a convenience for code reviewers.)
+      #
+      # Update the pull request's description with links to each file's diff-url.
+      # This allows a code-reviewer to simply click the link to jump to the diff.
+      #
+      # Example::
+      #
+      #   Markdown:
+      #     @doubleotoo: please code review \
+      #     [src/README](https://github.com/doubleotoo/foo/pull/40/files#diff-0).
+      #
+      #   Visible HTML:
+      #     @doubleotoo: please code review src/README.
+      #
+      #
+      # First, we compute the "diff number" (i.e. ../files#diff-<number>) for
+      # each file.
+      #
+      #   Note: This is currently quite hackish. There's no json API that maps
+      #   a file to a diff number. So our best bet is to grab the array of
+      #   pull_request files and then hope that a file's index in the array is
+      #   it's diff number.
+      #     I suppose we could just link to the diff page instead...
+      #
+      #
+      # If this update step fails, the pull_request will have a description,
+      # requesting developers to code review files--there just won't be any
+      # nice HTML links to the diff page.
+      #
+      #-------------------------------------------------------------------------
+      pull_request_file_diff_number = {}
+      i=0; github.pull_requests.files(options[:base_user],
+                                      options[:base_repo],
+                                      pull_request.number).each_page do |page|
+          page.each do |file|
+            pull_request_file_diff_number[file.filename] = i
+            i += 1
+          end
+        end
+
+      #---------------------------------
+      # Pull request description body
+      #
+      #   + With diff-links for files
+      #---------------------------------
+      body = "(Automatically generated pull-request.)\n"
+      file_reviewers.each {|file, reviewers|
+        diff_number = pull_request_file_diff_number[file]
+        diff_url = "#{pull_request.html_url}/files#diff-#{diff_number}"
+        diff_link = "[#{file}](#{diff_url})" # markdown [name](anchor)
+        GithubFlow.log "diff_link='#{diff_link}' for #{file}"
+        body << reviewers.collect {|r| "\n@#{r['github-user']} "}.join + ": please code review #{diff_link}."
+
+        raise "diff_number is nil for #{file}!" if diff_number.nil?
+      }
+
+      github.pull_requests.update_request(options[:base_user],
+                                          options[:base_repo],
+                                          pull_request.number,
+                                          'body' => body)
+      GithubFlow.log "Updated GitHub::PullRequest with diff-links for files: #{pull_request.to_json}"
     end # updated_branches.each
   end # updated_repo_branches.each
 end # create_pull_requests_for_updated_branches
