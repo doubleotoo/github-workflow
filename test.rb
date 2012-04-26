@@ -2,9 +2,12 @@
 #
 require 'grit'
 require 'tmpdir'
+require 'yaml'
 
 require 'github_api'
 require 'github_flow'
+
+require 'utilities'
 
 #GithubFlow::Models::Schema.new(adapter='sqlite3', database='tmp-demo.sqlite3', force=true)
 #GithubFlow::Models::Schema.new
@@ -260,12 +263,45 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
         "\n\tfrom: #{updated_repo.path}:#{updated_branch.name} (#{updated_branch.sha})" +
         "\n\tinto: #{options[:base_user]}/#{options[:base_repo]}:#{options[:base_branch]}"
 
+      # TODO: between [rose-compiler:rose, user:branch]
+      reviewers = []
+      Dir.mktmpdir do |tmp_git_path|
+        git = Grit::Git.new(tmp_git_path)
+        git.clone({
+              :quiet    => false,
+              :verbose  => true,
+              :progress => true,
+              :branch   => 'master'
+            },
+            "http://github.com/#{updated_repo.path}.git",
+            tmp_git_path)
+
+        grit = Grit::Repo.new(tmp_git_path)
+        new_commits = grit.commits_between('origin/master', updated_branch.sha)
+        review_commits = new_commits.select { |commit| ignore_commit(grit, commit) == false }
+        ignored_commits = new_commits - review_commits
+
+        GithubFlow.log "New commits: #{new_commits.size} #{new_commits}"
+        GithubFlow.log "Ignored commits: #{ignored_commits.size} #{ignored_commits}"
+
+        reviewers = get_reviewers(grit, 'AUTHORS.yml', review_commits)
+        validate_reviewers(github, reviewers)
+      end
+
+      reviewers = reviewers.collect {|reviewer| reviewer['github-user']}
+
+      # Don't allow self-reviews. Someone else has to review your work!
+      reviewers.delete(updated_repo.user)
+
+      GithubFlow.log "Reviewers for new pull request: #{reviewers}"
+
       begin
         response = github.pull_requests.create_request(
             options[:base_user],
             options[:base_repo],
-            'title' => "Merge #{updated_repo.user}:#{updated_branch.sha[0,8]}",
-            'body'  => 'Automatically generated pull-request.',
+            'title' => "Merge #{updated_repo.user}:#{updated_branch.name} (#{updated_branch.sha[0,8]})",
+            'body'  => "Automatically generated pull-request.\n\n" +
+                       reviewers.collect {|r| "@#{r} "}.join + ': please code review.',
             'head'  => "#{updated_repo.user}:#{updated_branch.sha}",
             'base'  => "#{options[:base_branch]}")
         GithubFlow.log 'Created GitHub::PullRequest'
@@ -299,19 +335,20 @@ end # create_pull_requests_for_updated_branches
 
 begin
   GithubFlow.debug = true
+  #Grit.debug = true
 
   @github = Github.new(:basic_auth => 'doubleotoo:x')
 
-  # create_pull_requests_for_updated_branches(
-  #     @github,
-  #     :base_user => 'doubleotoo',
-  #     :base_repo => 'foo',
-  #     :base_branch => 'master')
+  create_pull_requests_for_updated_branches(
+      @github,
+      :base_user => 'doubleotoo',
+      :base_repo => 'foo',
+      :base_branch => 'master')
+  exit 0
 
   # puts GitPulls.start('list')
   pulls = @github.pull_requests.requests('doubleotoo', 'foo')
   pulls.reverse.each do |p|
-    # puts p
     puts "Number : #{p.number}"
     puts "Label : #{p.head}"
     puts "Created : #{p.created_at}"
@@ -324,6 +361,19 @@ begin
     puts p.body
     puts
     puts '------------'
+    @github.issues.comments('doubleotoo', 'foo', p.number).each_page do |page|
+      page.each do |c|
+        puts "ID : #{c.id}"
+        puts "Author: #{c.user.login}"
+        puts "Created : #{c.created_at}"
+        puts
+        puts "Body :"
+        puts
+        puts c.body
+        puts
+        puts '------------'
+      end
+    end
     puts
   end
 
