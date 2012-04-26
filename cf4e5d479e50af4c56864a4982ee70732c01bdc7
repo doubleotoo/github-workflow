@@ -1,0 +1,4 @@
+* Use schacon/git-pulls mechanism of caching pull requests and
+  adding forks as remotes so we don't have to clone the repositories,
+  we can simply grab the meta data using `git fetch`. Of course, we
+  only want to add remotes for the white-listed forks.
