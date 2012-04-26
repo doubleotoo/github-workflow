@@ -20,6 +20,8 @@ Gem::Specification.new do |gem|
   gem.add_dependency 'grit', '~> 2.5'
   gem.add_dependency 'json', '~> 1.6'
 
+  # gem.add_dependency 'git-pulls', '0.3.4'
+
   gem.add_development_dependency 'guard', '~> 0.8.8'
   gem.add_development_dependency 'guard-rspec', '0.5.7'
   gem.add_development_dependency 'guard-cucumber', '0.7.4'

@@ -1,10 +1,10 @@
 # TODO: validate repo exists first
-
-require 'github_flow'
-require 'github_api'
-
+#
 require 'grit'
 require 'tmpdir'
+
+require 'github_api'
+require 'github_flow'
 
 #GithubFlow::Models::Schema.new(adapter='sqlite3', database='tmp-demo.sqlite3', force=true)
 #GithubFlow::Models::Schema.new
@@ -143,13 +143,14 @@ def get_commit(github = Github.new, user_options = {}, &block)
   else
     commit = nil
 
-    puts "Searching #{options[:user]}/#{options[:repo]} for #{options[:sha]}"
+    GithubFlow.log "Searching #{options[:user]}/#{options[:repo]} for #{options[:sha]}"
 
     # TODO: GitHub APIv3 bug? returns commit if it exists in a forked repo...
     # TODO: sent email to github support
     #commit = github.repos.commit(options[:user], options[:repo], options[:sha])
 
     # TODO: cloning the entire repository each time is slow...
+    # TODO: we may already have a clone of this repository...
     repo_path = "https://github.com/#{options[:user]}/#{options[:repo]}.git"
 
     GithubFlow.log "$ git clone #{repo_path}"
@@ -301,11 +302,30 @@ begin
 
   @github = Github.new(:basic_auth => 'doubleotoo:x')
 
-  create_pull_requests_for_updated_branches(
-      @github,
-      :base_user => 'doubleotoo',
-      :base_repo => 'foo',
-      :base_branch => 'master')
+  # create_pull_requests_for_updated_branches(
+  #     @github,
+  #     :base_user => 'doubleotoo',
+  #     :base_repo => 'foo',
+  #     :base_branch => 'master')
+
+  # puts GitPulls.start('list')
+  pulls = @github.pull_requests.requests('doubleotoo', 'foo')
+  pulls.reverse.each do |p|
+    # puts p
+    puts "Number : #{p.number}"
+    puts "Label : #{p.head}"
+    puts "Created : #{p.created_at}"
+    puts "Votes : #{p.votes}"
+    puts "Comments : #{p.comments}"
+    puts
+    puts "Title : #{p.title}"
+    puts "Body :"
+    puts
+    puts p.body
+    puts
+    puts '------------'
+    puts
+  end
 
 rescue Github::Error::GithubError
   puts "Github API error response message:\n#{$!.response_message}"
