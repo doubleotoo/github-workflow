@@ -415,25 +415,17 @@ def create_pull_requests_for_updated_branches(github = Github.new, user_options 
   end # updated_repo_branches.each
 end # create_pull_requests_for_updated_branches
 
-#-------------------------------------------------------------------------------
-# Main
-#-------------------------------------------------------------------------------
-
-begin
-  GithubFlow.debug = true
-  #Grit.debug = true
-
-  @github = Github.new(:basic_auth => 'doubleotoo:x')
-
-  create_pull_requests_for_updated_branches(
-      @github,
-      :base_user => 'doubleotoo',
-      :base_repo => 'foo',
-      :base_branch => 'master')
-  exit 0
-
+# list_pull_requests
+#
+def list_pull_requests(github = Github.new, user_options ={}, &block)
+  options = {
+    :repos => GithubFlow::Models::GithubRepo.all
+  }.merge(user_options).freeze
+  raise 'Missing required option :base_user' if not options.has_key?(:base_user)
+  raise 'Missing required option :base_repo' if not options.has_key?(:base_repo)
+  #-----------------------------------------------------------------------------
   # puts GitPulls.start('list')
-  pulls = @github.pull_requests.requests('doubleotoo', 'foo')
+  pulls = github.pull_requests.requests(options[:base_user], options[:base_repo])
   pulls.reverse.each do |p|
     puts "Number : #{p.number}"
     puts "Label : #{p.head}"
@@ -447,7 +439,7 @@ begin
     puts p.body
     puts
     puts '------------'
-    @github.issues.comments('doubleotoo', 'foo', p.number).each_page do |page|
+    github.issues.comments(options[:base_user], options[:base_repo], p.number).each_page do |page|
       page.each do |c|
         puts "ID : #{c.id}"
         puts "Author: #{c.user.login}"
@@ -462,6 +454,153 @@ begin
     end
     puts
   end
+end # list_pull_requests
+
+# get_reviewed_pull_requests
+#
+# TODO: regular expressions need to be made more robust
+#
+def get_reviewed_pull_requests(github = Github.new, user_options ={}, &block)
+  options = {
+    :repos => GithubFlow::Models::GithubRepo.all
+  }.merge(user_options).freeze
+  raise 'Missing required option :base_user' if not options.has_key?(:base_user)
+  raise 'Missing required option :base_repo' if not options.has_key?(:base_repo)
+  #-----------------------------------------------------------------------------
+  # puts GitPulls.start('list')
+  pulls = github.pull_requests.requests(options[:base_user], options[:base_repo])
+  pulls.reverse.each do |p|
+    GithubFlow.log "Checking if pull request " +
+      "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+      "has been code reviewed."
+
+    # Extract all the automatically generated lines pertaining to code review.
+    review_lines = []
+    file_reviewers = {}
+    request_description = p.body
+    request_description.each_line do |line|
+      # TODO: make the message a configuration
+      if match = line.match(/^@(?<user>.+): please code review (?<file>.+).*/)
+        user = match['user'].strip
+        file = match['file'].strip
+        # file could contain Markdown HTML links: [name](anchor)
+        if match = file.match(/\[(?<file>.+)\]\((?<anchor>.+)\)/)
+          file = match['file'].strip
+          anchor = match['anchor'].strip
+        end
+
+        review_lines << line
+
+        file_reviewers[file] ||= []
+        file_reviewers[file] << user
+        file_reviewers[file] = file_reviewers[file].compact # just as a pre-caution...
+      end
+    end
+
+    GithubFlow.log "Code review request lines for pull request " +
+      "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}': #{review_lines}"
+
+    file_reviewers.each do |file, reviewers|
+      GithubFlow.log "Pull request " +
+        "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+        "requests '#{reviewers}' to code review file='#{file}'"
+    end
+
+    github.issues.comments('doubleotoo', 'foo', p.number).each_page do |page|
+      page.each do |c|
+        c_id = c.id
+        c_author = c.user.login
+        c_body   = c.body
+
+        if match = c_body.match(/@(?<user>#{options[:base_user]}) reviewed (?<file>.+)./)
+          user = match['user'].strip
+          file = match['file'].strip
+
+          GithubFlow.log "Detected code review line for file='#{file}' in " +
+            "comment id='#{c_id}' authored by '#{c_author}' for " +
+            "pull request '#{options[:base_user]}/#{options[:base_repo]}##{p.number}'"
+
+          # file could contain Markdown HTML links: [name](anchor)
+          if match = file.match(/\[(?<file>.+)\]\((?<anchor>.+)\)/)
+            file = match['file'].strip
+            anchor = match['anchor'].strip
+          end
+
+          # This code reviewer is one of the people in the code review request list.
+          reviewers = file_reviewers[file]
+          if reviewers.nil?
+            raise "No reviewers for '#{file}' (#{file_reviewers})"
+          else
+            if reviewers.include?(c_author)
+              GithubFlow.log "User '#{c_author}' has code reviewed file='#{file}' for " +
+                "pull request '#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+                "as requested."
+
+              file_reviewers.delete(file) # file has been reviewed
+            else
+              GithubFlow.log "User '#{c_author}' was not requested to code review file='#{file}' " +
+                "for pull request '#{options[:base_user]}/#{options[:base_repo]}##{p.number}'"
+            end
+          end
+        end
+      end
+    end # github.issues.comments.each_page
+
+    outstanding_file_reviews = file_reviewers
+
+    if outstanding_file_reviews.empty?
+      GithubFlow.log "Pull request " +
+        "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+        "has been code reviewed. Ready for testing!"
+    else
+      GithubFlow.log "Pull request " +
+        "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+        "has ('#{outstanding_file_reviews.size}') outstanding code review requests."
+
+        outstanding_file_reviews.each do |file, reviewers|
+          GithubFlow.log "Pull request " +
+            "'#{options[:base_user]}/#{options[:base_repo]}##{p.number}' " +
+            "still requires '#{reviewers}' to code review file='#{file}'"
+        end
+    end
+  end
+end # get_reviewed_pull_requests
+
+#-------------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------------
+
+# TODO: validate that tested commits are current pull_request's commits
+#
+#     1. In the DB, we have [pull_request.head_sha], so we can just make sure
+#        that [doubleotoo/foo/pulls/39].head.ref == [pull_request.head_sha].
+#
+#     X. Check that each commit [doubleotoo/foo/pulls/39/commits] was
+#        created before [doubleotoo/foo/pulls/39].created_at. However,
+#        in this case, a user can forge GIT_COMMIT_DATE or GIT_AUTHOR_DATE.
+
+
+# TODO: test multiple reviewers per file
+
+begin
+  GithubFlow.debug = true
+  #Grit.debug = true
+
+  @github = Github.new(:basic_auth => 'doubleotoo:x')
+
+  create_pull_requests_for_updated_branches(
+      @github,
+      :base_user => 'doubleotoo',
+      :base_repo => 'foo',
+      :base_branch => 'master')
+
+  # list_pull_requests(@github,
+  #                    :base_user => 'doubleotoo',
+  #                    :base_repo => 'foo')
+
+  get_reviewed_pull_requests(@github,
+                     :base_user => 'doubleotoo',
+                     :base_repo => 'foo')
 
 rescue Github::Error::GithubError
   puts "Github API error response message:\n#{$!.response_message}"
