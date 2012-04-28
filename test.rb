@@ -238,7 +238,14 @@ def get_updated_branches_relative_to_repo(github = Github.new, user_options = {}
   updated_branches
 end # get_updated_branches_relative_to_repo
 
+# create_pull_requests_for_updated_branches
+#
 # TODO: add labels 'pull-request', 'test-request'
+# TODO: check if an identical pull_request was created before, but is now 'closed'. Instead
+#       of creating a new one, it would probably make more sense to 'reopen' the old one.
+#       This way, we can retain any previous "history" related to the pull_request, e.g.
+#       pull_request comments.
+#
 def create_pull_requests_for_updated_branches(github = Github.new, user_options ={}, &block)
   options = {
     :repos => GithubFlow::Models::GithubRepo.all,
@@ -459,6 +466,17 @@ end # list_pull_requests
 # get_reviewed_pull_requests
 #
 # TODO: regular expressions need to be made more robust
+# TODO: (policy) if a pull_request wasn't automatically created, there won't be
+#                any @reviewers in the pull_request description. In general,
+#                this means that a user manually submitted a pull_request. In
+#                this case, how do we want to validate @user reviewed XXX
+#                comments?
+#
+#                   * No "@reviewer review request" lines in the description,
+#                     then => accept any @reviewed comment line by:
+#
+#                       1. repository collaborators or "Admin" users that we
+#                          track in some other data store.
 #
 def get_reviewed_pull_requests(github = Github.new, user_options ={}, &block)
   options = {
@@ -516,7 +534,7 @@ def get_reviewed_pull_requests(github = Github.new, user_options ={}, &block)
           user = match['user'].strip
           file = match['file'].strip
 
-          GithubFlow.log "Detected code review line for file='#{file}' in " +
+          GithubFlow.log "Detected code reviewed line for file='#{file}' in " +
             "comment id='#{c_id}' authored by '#{c_author}' for " +
             "pull request '#{options[:base_user]}/#{options[:base_repo]}##{p.number}'"
 
@@ -581,6 +599,20 @@ end # get_reviewed_pull_requests
 
 
 # TODO: test multiple reviewers per file
+
+
+# TODO: web interface:
+#
+#   FORKS:
+#
+#     * We should poll all forks of the base repository. In the interface, the
+#       user can 'whitelist' forks that they want to automatically generate
+#       pull_requests for. If a new fork is detected, we should alert the
+#       user in the interface (maybe a pretty START).
+#
+#     * Embed fork graphs (as a first step) to alert base_repo_owner of
+#       activity that they might be interested in...if there's a lot going
+#       on. They may want to start generated pull_requests for that repository.
 
 begin
   GithubFlow.debug = true
